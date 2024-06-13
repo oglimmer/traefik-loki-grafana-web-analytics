@@ -1,0 +1,68 @@
+
+services:
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/opt/access-logs/access.json"
+      - "--accesslog.format=json"
+      - "--accesslog.fields.defaultmode=keep"
+      - "--accesslog.fields.headers.defaultmode=keep"
+      - "--accesslog.fields.headers.names.User-Agent=keep"
+      - "--accesslog.fields.headers.names.Referer=keep"
+    network_mode: host
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - ./access-logs:/opt/access-logs
+
+  website:
+    image: nginx
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.website.rule=PathPrefix(`/`)"
+
+  promtail:
+    image: grafana/promtail:2.9.3
+    command: -config.file=/etc/promtail/promtail.yaml
+    volumes:
+      - "./promtail-config.yml:/etc/promtail/promtail.yaml"
+      - "./access-logs:/var/log"
+      - "./promtail-data:/tmp/positions"
+      - "./GeoLite2-City.mmdb:/etc/promtail/GeoLite2-City.mmdb"
+
+  loki:
+    image: grafana/loki:3.0.0
+    command: -config.file=/etc/loki/local-config.yaml
+
+  grafana:
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+        - name: Loki
+          type: loki
+          access: proxy 
+          orgId: 1
+          url: http://loki:3100
+          basicAuth: false
+          isDefault: true
+          version: 1
+          editable: false
+        EOF
+        /run.sh
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
