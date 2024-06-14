@@ -1,6 +1,6 @@
 # Traefik + Loki + Grafana : Web Analytics setup
 
-
+You can find an article about his repo here: https://oglimmer.medium.com/web-analytics-with-grafana-loki-ad64e05cf9f3
 
 ## Geo location lookup
 
