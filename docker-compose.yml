@@ -37,7 +37,13 @@ services:
 
   loki:
     image: grafana/loki:3.0.0
-    command: -config.file=/etc/loki/local-config.yaml
+    # Retention is disabled by default, which means chunks are never deleted.
+    # delete_request_store has to be set as well or Loki refuses to start.
+    command:
+      - "-config.file=/etc/loki/local-config.yaml"
+      - "-compactor.retention-enabled=true"
+      - "-compactor.delete-request-store=filesystem"
+      - "-store.retention=2160h"
 
   grafana:
     environment:

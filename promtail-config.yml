@@ -35,6 +35,22 @@ scrape_configs:
       - geoip_continent_name
       - geoip_subdivision_name
       - geoip_timezone
+    # The geoip stage writes its result straight into the label set, so those
+    # values are not visible to the structured_metadata stage. A nested match
+    # pipeline re-seeds the extracted map from the current labels, which makes
+    # it possible to re-attach the high cardinality ones as structured metadata
+    # (stored with the log line, not indexed) and drop them as labels.
+    - match:
+        selector: '{job="traefik"}'
+        stages:
+        - structured_metadata:
+            geoip_city_name:
+            geoip_location_latitude:
+            geoip_location_longitude:
+        - labeldrop:
+          - geoip_city_name
+          - geoip_location_latitude
+          - geoip_location_longitude
     - regex:
         source: user_agent
         expression: "(?P<OS>Windows \\w+ \\d+(?:\\.\\d+)*|Linux(?: (?:i686|x86_64))?|Macintosh|(?:CPU )?iPhone OS|CPU OS.*?like Mac OS X)"
@@ -44,13 +60,21 @@ scrape_configs:
     - regex:
         source: user_agent
         expression: "(?P<Browser>(MSIE|(?:Mobile )?Safari|Chrome|\\b\\w+\\b Chromium|Firefox|Version|Mobile|GSA|QuickLook|OPR)[ \\\\/](?:[A-Z\\d]+\\b|\\d+(?:\\.\\d+)*))"
+    # Only low cardinality fields become labels: every distinct combination of
+    # label values creates a stream in Loki, and every stream costs a directory
+    # plus at least one chunk file on disk.
     - labels:
-        client_host:
-        user_agent:
-        request_path:
         OS:
         Device:
         Browser:
+    # client_host, user_agent and request_path are unbounded (request_path even
+    # contains the query string), so they are attached as structured metadata.
+    # They stay queryable - {host="localhost"} | client_host="1.2.3.4" - and
+    # Grafana still shows them, they just don't create streams anymore.
+    - structured_metadata:
+        client_host:
+        user_agent:
+        request_path:
   static_configs:
   - targets:
     - localhost
